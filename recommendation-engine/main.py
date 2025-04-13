@@ -382,6 +382,35 @@ def recommend(args):
             logger.error("Failed to initialize recommendation models")
             print("❌ Failed to initialize recommendation models. Check logs for details.")
             return False
+
+        # Deteksi pengguna cold-start
+        is_cold_start = False
+        if user_id and cf.user_item_df is not None:
+            if user_id not in cf.user_item_df.index:
+                is_cold_start = True
+            else:
+                # Cek jumlah interaksi
+                user_interactions = cf.user_item_df.loc[user_id]
+                if user_interactions[user_interactions > 0].count() < 3:  # Kurang dari 3 interaksi
+                    is_cold_start = True
+
+        # Handle pengguna cold-start
+        if is_cold_start and rec_type not in ['popular', 'trending']:
+            logger.info(f"Detected cold-start user: {user_id}")
+            print(f"Detected cold-start user: {user_id}. Using specialized recommendations strategy.")
+            
+            # Anda bisa menambahkan parameter untuk minat pengguna
+            user_interests = getattr(args, 'interests', None)
+            if user_interests and isinstance(user_interests, str):
+                user_interests = user_interests.split(',')
+            
+            # Gunakan strategi cold-start
+            recommendations = cf.get_cold_start_recommendations(
+                user_id, 
+                user_interests=user_interests,
+                feature_cf=feature_cf,
+                n=num_recommendations
+            )
         
         # Initialize NCF model if requested
         if rec_type == 'ncf':
@@ -1195,6 +1224,7 @@ Examples:
     recommend_parser.add_argument("--chain", help="Filter by blockchain")
     recommend_parser.add_argument("--save", action="store_true", help="Save recommendations to file")
     recommend_parser.add_argument("--format", choices=['json', 'csv'], default='json', help="Output format")
+    recommend_parser.add_argument("--interests", help="Comma-separated list of user interests (categories)")
     
     # analyze command
     analyze_parser = subparsers.add_parser("analyze", help="Analyze recommendation results")

@@ -261,9 +261,6 @@ def get_recommendations():
             
             # Skip cache dan langsung kembalikan hasil
             return jsonify(recommendations)
-        else:
-            # Jika bukan cold-start user, lanjutkan ke proses normal
-            pass
         
         # Check cache first
         cache_key = get_cache_key(
