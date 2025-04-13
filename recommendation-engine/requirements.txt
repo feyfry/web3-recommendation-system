@@ -1,0 +1,52 @@
+# API dan HTTP
+requests
+flask
+aiohttp
+gunicorn
+
+# Data processing dan Analysis
+pandas
+numpy
+scikit-learn
+scipy
+
+# Deep Learning
+torch
+torchvision
+
+# Database (untuk future integration)
+psycopg2-binary
+SQLAlchemy
+
+# Data Visualization
+matplotlib
+seaborn
+plotly
+
+# Utility
+python-dotenv
+tqdm
+joblib
+chardet
+backoff
+
+# Performance
+cachetools
+redis
+
+# Logging
+logging-plus
+
+# Testing
+pytest
+pytest-cov
+
+# Development Tools
+black
+isort
+pylint
+mypy
+
+Documentation
+Sphinx
+sphinx-rtd-theme

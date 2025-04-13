@@ -1,0 +1,7 @@
+venv
+debug_process.py
+cek.py
+data
+logs
+cache
+__pycache__
