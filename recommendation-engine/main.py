@@ -749,21 +749,24 @@ def analyze_results(args):
             
             # Load file
             if file.endswith('.json'):
-                with open(filepath, 'r') as f:
-                    try:
-                        recs = json.load(f)
-                        
-                        # Count projects
-                        for rec in recs:
-                            if isinstance(rec, dict) and 'id' in rec:
-                                project_id = rec['id']
-                                if project_id not in project_counts:
-                                    project_counts[project_id] = 0
-                                project_counts[project_id] += 1
-                        
-                        all_recs.append(recs)
-                    except:
-                        logger.warning(f"Error loading JSON file: {filepath}")
+                try:
+                    with open(filepath, 'r', encoding='utf-8') as f:
+                        try:
+                            recs = json.load(f)
+                            
+                            # Count projects
+                            for rec in recs:
+                                if isinstance(rec, dict) and 'id' in rec:
+                                    project_id = rec['id']
+                                    if project_id not in project_counts:
+                                        project_counts[project_id] = 0
+                                    project_counts[project_id] += 1
+                            
+                            all_recs.append(recs)
+                        except json.JSONDecodeError as json_err:
+                            logger.warning(f"JSON parsing error in {filepath}: {json_err}")
+                except Exception as e:
+                    logger.warning(f"Error loading JSON file {filepath}: {str(e)}")
             elif file.endswith('.csv'):
                 try:
                     recs_df = pd.read_csv(filepath)
@@ -782,8 +785,8 @@ def analyze_results(args):
                         project_counts[project_id] += 1
                     
                     all_recs.append(recs_df.to_dict('records'))
-                except:
-                    logger.warning(f"Error loading CSV file: {filepath}")
+                except Exception as e:
+                    logger.warning(f"Error loading CSV file {filepath}: {str(e)}")
         
         # Generate report
         report.append(f"Total recommendation files analyzed: {len(all_rec_files)}")
@@ -820,8 +823,8 @@ def analyze_results(args):
                             'symbol': symbol,
                             'category': category
                         }
-        except:
-            logger.warning("Could not load project details")
+        except Exception as e:
+            logger.warning(f"Could not load project details: {str(e)}")
         
         for project_id, count in top_projects:
             if project_id in project_details:
@@ -874,9 +877,9 @@ def analyze_results(args):
         return True
         
     except Exception as e:
-        logger.error(f"Error during analysis: {e}")
+        logger.error(f"Error during analysis: {str(e)}")
         logger.error(traceback.format_exc())
-        print(f"❌ Error during analysis: {e}")
+        print(f"❌ Error during analysis: {str(e)}")
         return False
 
 def run_pipeline(args):
