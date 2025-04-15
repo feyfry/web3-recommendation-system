@@ -743,6 +743,42 @@ def get_categories():
     except Exception as e:
         logger.error(f"Error getting categories: {e}", exc_info=True)
         return jsonify({"error": str(e)}), 500
+
+@app.route('/api/chains', methods=['GET'])
+@monitor_performance
+def get_chains():
+    """Get all available blockchain chains with project counts"""
+    try:
+        # Check cache
+        cache_key = "chains_list"
+        cached_result = get_from_cache(cache_key)
+        if cached_result:
+            return jsonify(cached_result)
+        
+        # Get chains
+        with DatabaseConnection() as cursor:
+            query = """
+            SELECT chain, COUNT(*) AS project_count
+            FROM projects
+            WHERE chain IS NOT NULL AND chain != 'unknown'
+            GROUP BY chain
+            ORDER BY project_count DESC
+            """
+            
+            cursor.execute(query)
+            chains = cursor.fetchall()
+        
+        # Convert to list of dicts
+        result = [dict(chain) for chain in chains]
+        
+        # Store in cache
+        set_in_cache(cache_key, result, CACHE_TTL * 2)  # Longer TTL for chains
+        
+        return jsonify(result)
+    
+    except Exception as e:
+        logger.error(f"Error getting chains: {e}", exc_info=True)
+        return jsonify({"error": str(e)}), 500
     
 @app.route('/api/trading-signals', methods=['GET'])
 @monitor_performance
@@ -809,7 +845,7 @@ def get_trading_signals():
     except Exception as e:
         logger.error(f"Error generating trading signals: {e}", exc_info=True)
         return jsonify({"error": str(e)}), 500
-    
+
 @app.route('/api/projects/<project_id>/history', methods=['GET'])
 @monitor_performance
 def get_project_price_history(project_id):
@@ -935,42 +971,6 @@ def get_project_price_history(project_id):
     
     except Exception as e:
         logger.error(f"Error getting price history: {e}", exc_info=True)
-        return jsonify({"error": str(e)}), 500
-
-@app.route('/api/chains', methods=['GET'])
-@monitor_performance
-def get_chains():
-    """Get all available blockchain chains with project counts"""
-    try:
-        # Check cache
-        cache_key = "chains_list"
-        cached_result = get_from_cache(cache_key)
-        if cached_result:
-            return jsonify(cached_result)
-        
-        # Get chains
-        with DatabaseConnection() as cursor:
-            query = """
-            SELECT chain, COUNT(*) AS project_count
-            FROM projects
-            WHERE chain IS NOT NULL AND chain != 'unknown'
-            GROUP BY chain
-            ORDER BY project_count DESC
-            """
-            
-            cursor.execute(query)
-            chains = cursor.fetchall()
-        
-        # Convert to list of dicts
-        result = [dict(chain) for chain in chains]
-        
-        # Store in cache
-        set_in_cache(cache_key, result, CACHE_TTL * 2)  # Longer TTL for chains
-        
-        return jsonify(result)
-    
-    except Exception as e:
-        logger.error(f"Error getting chains: {e}", exc_info=True)
         return jsonify({"error": str(e)}), 500
 
 @app.route('/api/train-model', methods=['POST'])
