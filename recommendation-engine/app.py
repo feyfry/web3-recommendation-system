@@ -35,6 +35,7 @@ from config.config import (
 from src.models.collaborative_filtering import CollaborativeFiltering
 from src.models.feature_enhanced_cf import FeatureEnhancedCF
 from src.models.neural_collaborative_filtering import NCFRecommender
+from src.models.technical_analysis import generate_trading_signals, personalize_signals
 from src.utils.data_utils import DateTimeEncoder
 
 # Import dan setup central logging untuk API service
@@ -741,6 +742,199 @@ def get_categories():
     
     except Exception as e:
         logger.error(f"Error getting categories: {e}", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+    
+@app.route('/api/trading-signals', methods=['GET'])
+@monitor_performance
+def get_trading_signals():
+    """
+    Get trading signals for a specific project
+    
+    Query Parameters:
+        project_id (str): Project ID
+        user_id (str, optional): User ID for personalized signals
+    """
+    try:
+        project_id = request.args.get('project_id')
+        user_id = request.args.get('user_id', '')
+        
+        if not project_id:
+            return jsonify({"error": "Project ID is required"}), 400
+        
+        # Load data
+        cf, feature_cf, _ = get_models()
+        
+        # Get price history
+        with DatabaseConnection() as cursor:
+            query = """
+            SELECT timestamp, price, volume, market_cap
+            FROM historical_prices
+            WHERE project_id = %s
+            ORDER BY timestamp DESC
+            LIMIT 168  -- Last 7 days hourly data
+            """
+            
+            cursor.execute(query, (project_id,))
+            price_history = cursor.fetchall()
+            
+            if not price_history:
+                return jsonify({"error": "No price data available"}), 404
+        
+        # Create DataFrame from price data
+        price_df = pd.DataFrame(price_history)
+        
+        # Get project info
+        project_info = None
+        if cf and cf.projects_df is not None:
+            project_data = cf.projects_df[cf.projects_df['id'] == project_id]
+            if not project_data.empty:
+                project_info = project_data.iloc[0].to_dict()
+        
+        # Generate trading signals
+        signals = generate_trading_signals(price_df, project_info)
+        
+        # If user_id provided, personalize recommendations
+        if user_id:
+            # Get user risk profile
+            with DatabaseConnection() as cursor:
+                cursor.execute("SELECT risk_tolerance FROM users WHERE user_id = %s", (user_id,))
+                user_data = cursor.fetchone()
+                risk_tolerance = user_data['risk_tolerance'] if user_data else 'medium'
+            
+            # Personalize based on risk profile
+            signals = personalize_signals(signals, risk_tolerance)
+        
+        return jsonify(signals)
+    
+    except Exception as e:
+        logger.error(f"Error generating trading signals: {e}", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+    
+@app.route('/api/projects/<project_id>/history', methods=['GET'])
+@monitor_performance
+def get_project_price_history(project_id):
+    """
+    Get historical price data for a project
+    
+    Path Parameters:
+        project_id (str): Project ID
+        
+    Query Parameters:
+        period (str, optional): Time period (1d, 7d, 30d, 90d, 1y, all)
+        interval (str, optional): Data interval (1h, 4h, 1d, 1w)
+    """
+    try:
+        # Get parameters
+        period = request.args.get('period', '7d').lower()
+        interval = request.args.get('interval', '1h').lower()
+        
+        # Map period to hours
+        period_mapping = {
+            '1d': 24,
+            '7d': 168,
+            '30d': 720,
+            '90d': 2160,
+            '1y': 8760,
+            'all': 100000  # Very large number to get all data
+        }
+        
+        limit = period_mapping.get(period, 168)  # Default to 7d
+        
+        # Build query based on interval
+        if interval == '1h':
+            # Hourly data
+            query = """
+            SELECT timestamp, price, volume, market_cap
+            FROM historical_prices
+            WHERE project_id = %s
+            ORDER BY timestamp DESC
+            LIMIT %s
+            """
+        elif interval == '4h':
+            # 4-hour intervals
+            query = """
+            SELECT 
+                timestamp,
+                price,
+                volume,
+                market_cap
+            FROM historical_prices
+            WHERE 
+                project_id = %s AND
+                EXTRACT(HOUR FROM timestamp) % 4 = 0
+            ORDER BY timestamp DESC
+            LIMIT %s
+            """
+        elif interval == '1d':
+            # Daily data
+            query = """
+            SELECT 
+                DATE_TRUNC('day', timestamp) AS timestamp,
+                AVG(price) AS price,
+                SUM(volume) AS volume,
+                MAX(market_cap) AS market_cap
+            FROM historical_prices
+            WHERE project_id = %s
+            GROUP BY DATE_TRUNC('day', timestamp)
+            ORDER BY timestamp DESC
+            LIMIT %s
+            """
+        elif interval == '1w':
+            # Weekly data
+            query = """
+            SELECT 
+                DATE_TRUNC('week', timestamp) AS timestamp,
+                AVG(price) AS price,
+                SUM(volume) AS volume,
+                MAX(market_cap) AS market_cap
+            FROM historical_prices
+            WHERE project_id = %s
+            GROUP BY DATE_TRUNC('week', timestamp)
+            ORDER BY timestamp DESC
+            LIMIT %s
+            """
+        else:
+            # Default to hourly
+            query = """
+            SELECT timestamp, price, volume, market_cap
+            FROM historical_prices
+            WHERE project_id = %s
+            ORDER BY timestamp DESC
+            LIMIT %s
+            """
+        
+        # Execute query
+        with DatabaseConnection() as cursor:
+            cursor.execute(query, (project_id, limit))
+            history = cursor.fetchall()
+            
+            if not history:
+                return jsonify({"error": "No historical data found"}), 404
+        
+        # Convert to list of dicts
+        result = []
+        for record in history:
+            record_dict = dict(record)
+            # Convert datetime to string
+            record_dict['timestamp'] = record_dict['timestamp'].isoformat()
+            # Convert numeric values
+            for key in ['price', 'volume', 'market_cap']:
+                if key in record_dict and record_dict[key] is not None:
+                    record_dict[key] = float(record_dict[key])
+            result.append(record_dict)
+        
+        # Sort by timestamp (ascending)
+        result.sort(key=lambda x: x['timestamp'])
+        
+        return jsonify({
+            "project_id": project_id,
+            "period": period,
+            "interval": interval,
+            "data": result
+        })
+    
+    except Exception as e:
+        logger.error(f"Error getting price history: {e}", exc_info=True)
         return jsonify({"error": str(e)}), 500
 
 @app.route('/api/chains', methods=['GET'])
