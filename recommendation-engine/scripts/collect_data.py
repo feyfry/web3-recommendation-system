@@ -34,6 +34,93 @@ from config.config import (
     REQUEST_TIMEOUT
 )
 
+def collect_historical_prices(args, collector, projects_df):
+    """
+    Collect historical price data for top projects
+    
+    Args:
+        args: Command line arguments
+        collector: CoinGeckoCollector instance
+        projects_df: DataFrame of projects
+    """
+    logger.info("Collecting historical price data for top projects")
+    
+    # Get top projects by market cap
+    if projects_df is not None and not projects_df.empty:
+        top_projects = projects_df.sort_values('market_cap', ascending=False).head(args.detail_limit)
+        
+        # Create database connection
+        try:
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            
+            # Collect historical data for each project
+            for idx, project in top_projects.iterrows():
+                project_id = project['id']
+                logger.info(f"Collecting historical prices for {project_id} ({idx+1}/{len(top_projects)})")
+                
+                # Get market chart data
+                market_data = collector.get_market_chart(
+                    project_id, 
+                    days=7,  # Last 7 days data
+                    interval='hourly'
+                )
+                
+                if market_data and 'prices' in market_data:
+                    # Clear old data to avoid duplicates (optional)
+                    cursor.execute(
+                        "DELETE FROM historical_prices WHERE project_id = %s AND timestamp >= NOW() - INTERVAL '7 DAY'", 
+                        (project_id,)
+                    )
+                    
+                    # Insert new data
+                    for timestamp_ms, price in market_data['prices']:
+                        timestamp = datetime.fromtimestamp(timestamp_ms / 1000)
+                        
+                        # Get volume and market cap if available
+                        volume = None
+                        market_cap = None
+                        
+                        for vol_ts, vol in market_data.get('total_volumes', []):
+                            if vol_ts == timestamp_ms:
+                                volume = vol
+                                break
+                                
+                        for cap_ts, cap in market_data.get('market_caps', []):
+                            if cap_ts == timestamp_ms:
+                                market_cap = cap
+                                break
+                        
+                        # Insert data
+                        try:
+                            cursor.execute(
+                                """
+                                INSERT INTO historical_prices 
+                                (project_id, timestamp, price, volume, market_cap)
+                                VALUES (%s, %s, %s, %s, %s)
+                                ON CONFLICT (project_id, timestamp) 
+                                DO UPDATE SET price = %s, volume = %s, market_cap = %s
+                                """,
+                                (project_id, timestamp, price, volume, market_cap, price, volume, market_cap)
+                            )
+                        except Exception as e:
+                            logger.warning(f"Error inserting data point: {e}")
+                    
+                    conn.commit()
+                    logger.info(f"Saved {len(market_data['prices'])} data points for {project_id}")
+                
+                # Respect rate limits
+                time.sleep(args.rate_limit)
+            
+            cursor.close()
+            conn.close()
+            logger.info("Historical price collection completed")
+            
+        except Exception as e:
+            logger.error(f"Error collecting historical prices: {e}")
+    else:
+        logger.warning("No projects data available for historical price collection")
+
 def collect_all_data(args) -> bool:
     """
     Mengumpulkan semua data yang diperlukan dari CoinGecko API
@@ -148,6 +235,11 @@ def collect_all_data(args) -> bool:
             time.sleep(rate_limit)
         
         logger.info(f"Detailed data collection completed. Collected {successful_details}/{detail_limit} coins.")
+
+    # Collect historical prices
+    if not args.skip_historical:
+        market_df = pd.concat(all_market_data, ignore_index=True).drop_duplicates(subset='id')
+        collect_historical_prices(args, collector, market_df)
     
     # Process the collected data
     if args.process:

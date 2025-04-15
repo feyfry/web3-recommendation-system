@@ -843,7 +843,7 @@ def get_trading_signals():
         return jsonify(signals)
     
     except Exception as e:
-        logger.error(f"Error generating trading signals: {e}", exc_info=True)
+        logger.error(f"Error generating trading signals: {e}")
         return jsonify({"error": str(e)}), 500
 
 @app.route('/api/projects/<project_id>/history', methods=['GET'])
@@ -970,7 +970,7 @@ def get_project_price_history(project_id):
         })
     
     except Exception as e:
-        logger.error(f"Error getting price history: {e}", exc_info=True)
+        logger.error(f"Error getting price history: {e}")
         return jsonify({"error": str(e)}), 500
 
 @app.route('/api/train-model', methods=['POST'])

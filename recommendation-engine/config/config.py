@@ -108,3 +108,43 @@ MAX_THREADS = 4
 REQUEST_TIMEOUT = 30  # Seconds
 RETRY_COUNT = 3
 RATE_LIMIT_DELAY = 2  # Seconds between API requests
+
+# Technical Analysis Configuration
+TECHNICAL_ANALYSIS = {
+    "RSI_PERIOD": 14,  # Period for RSI calculation
+    "MACD_FAST": 12,   # Fast period for MACD
+    "MACD_SLOW": 26,   # Slow period for MACD
+    "MACD_SIGNAL": 9,  # Signal period for MACD
+    "MA_SHORT": 20,    # Short moving average period
+    "MA_LONG": 50,     # Long moving average period
+    "BB_PERIOD": 20,   # Bollinger Bands period
+    "BB_STD": 2,       # Standard deviations for Bollinger Bands
+    "VOLUME_CHANGE_THRESHOLD": 50,  # % increase to consider volume spike
+    "PRICE_CHANGE_THRESHOLD": {
+        "low": 3,      # % change for low risk tolerance
+        "medium": 5,   # % change for medium risk tolerance
+        "high": 8      # % change for high risk tolerance
+    }
+}
+
+# Risk Tolerance Adjustments for Technical Signals
+RISK_ADJUSTMENTS = {
+    "low": {
+        "buy_threshold": 0.7,    # Higher confidence needed for buy signal
+        "sell_threshold": 0.5,   # Lower confidence needed for sell signal
+        "stop_loss": 0.95,       # 5% stop loss
+        "take_profit": 1.05      # 5% take profit
+    },
+    "medium": {
+        "buy_threshold": 0.6,    # Medium confidence needed for buy signal
+        "sell_threshold": 0.6,   # Medium confidence needed for sell signal
+        "stop_loss": 0.92,       # 8% stop loss
+        "take_profit": 1.08      # 8% take profit
+    },
+    "high": {
+        "buy_threshold": 0.5,    # Lower confidence needed for buy signal
+        "sell_threshold": 0.7,   # Higher confidence needed for sell signal
+        "stop_loss": 0.90,       # 10% stop loss
+        "take_profit": 1.15      # 15% take profit
+    }
+}

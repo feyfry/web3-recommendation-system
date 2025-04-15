@@ -298,6 +298,38 @@ class CoinGeckoCollector:
         self._save_raw_data("trending_coins.json", response)
         
         return response
+    
+    def get_market_chart(self, coin_id: str, vs_currency: str = "usd", days: int = 7, interval: str = "daily") -> Optional[Dict[str, Any]]:
+        """
+        Get historical market data for a coin
+        
+        Args:
+            coin_id: Coin ID
+            vs_currency: Currency to compare against
+            days: Number of days of data to return
+            interval: Data interval ('daily' or 'hourly')
+            
+        Returns:
+            dict: Market chart data or None if request failed
+        """
+        params = {
+            "vs_currency": vs_currency,
+            "days": days,
+            "interval": interval
+        }
+        
+        endpoint = f"coins/{coin_id}/market_chart"
+        
+        response = self._make_api_request(endpoint, params)
+        
+        if response:
+            logger.info(f"Retrieved market chart data for {coin_id} ({days} days, {interval} interval)")
+            # Save raw data
+            self._save_raw_data(f"coin_market_chart_{coin_id}_{days}d_{interval}.json", response)
+            return response
+        else:
+            logger.error(f"Failed to get market chart data for {coin_id}")
+            return None
         
     def collect_all_data(self) -> Tuple[Optional[pd.DataFrame], Optional[pd.DataFrame], Optional[pd.DataFrame]]:
         """

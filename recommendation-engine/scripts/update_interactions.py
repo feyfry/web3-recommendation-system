@@ -10,6 +10,7 @@ import psycopg2
 import psycopg2.extras
 from datetime import datetime, timedelta
 import numpy as np
+import json
 
 # Tambahkan path root ke sys.path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
@@ -395,13 +396,13 @@ def generate_technical_recommendations():
 
 def update_trading_signals():
     """
-    Update trading signals untuk proyek yang sedang dibawa oleh pengguna
+    Update trading signals for projects in user portfolios
     """
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
         
-        # Ambil proyek di portfolio pengguna
+        # Get projects in user portfolios
         cursor.execute("""
         SELECT DISTINCT p.user_id, p.project_id 
         FROM portfolios p
@@ -411,10 +412,10 @@ def update_trading_signals():
         
         portfolio_items = cursor.fetchall()
         
-        # Generate sinyal untuk setiap item di portfolio
+        # Generate signals for each portfolio item
         for user_id, project_id in portfolio_items:
             try:
-                # Ambil data harga historis
+                # Get historical price data
                 cursor.execute("""
                 SELECT timestamp, price, volume, market_cap
                 FROM historical_prices
@@ -428,10 +429,10 @@ def update_trading_signals():
                 if not price_history or len(price_history) < 24:
                     continue
                 
-                # Konversi ke DataFrame
+                # Convert to DataFrame
                 df = pd.DataFrame(price_history, columns=['timestamp', 'price', 'volume', 'market_cap'])
                 
-                # Ambil informasi proyek
+                # Get project info
                 cursor.execute("""
                 SELECT * FROM projects WHERE id = %s
                 """, (project_id,))
@@ -442,16 +443,16 @@ def update_trading_signals():
                     columns = [desc[0] for desc in cursor.description]
                     project_dict = dict(zip(columns, project_info))
                 
-                # Ambil profil risiko pengguna
+                # Get user risk profile
                 cursor.execute("SELECT risk_tolerance FROM users WHERE user_id = %s", (user_id,))
                 user_data = cursor.fetchone()
                 risk_tolerance = user_data[0] if user_data else 'medium'
                 
-                # Generate dan personalisasi sinyal
+                # Generate and personalize signals
                 signals = generate_trading_signals(df, project_dict)
                 personalized = personalize_signals(signals, risk_tolerance)
                 
-                # Cek jika ada perubahan signifikan dari rekomendasi sebelumnya
+                # Check if there's a significant change from previous recommendation
                 cursor.execute("""
                 SELECT action_type FROM recommendations 
                 WHERE user_id = %s AND project_id = %s AND recommendation_type = 'technical'
@@ -461,9 +462,9 @@ def update_trading_signals():
                 prev_action = cursor.fetchone()
                 prev_action_type = prev_action[0] if prev_action else None
                 
-                # Jika ada perubahan aksi atau tidak ada rekomendasi sebelumnya
+                # If action changed or no previous recommendation exists
                 if prev_action_type != personalized.get('action') or prev_action_type is None:
-                    # Simpan rekomendasi baru
+                    # Save new recommendation
                     cursor.execute("""
                     INSERT INTO recommendations (
                         user_id, project_id, score, rank, recommendation_type, 
@@ -482,9 +483,8 @@ def update_trading_signals():
                         personalized.get('reason', 'Technical analysis recommendation')
                     ))
                     
-                    # Jika perubahan signifikan, kirim notifikasi
+                    # Send notification if action changed significantly
                     if prev_action_type is not None and prev_action_type != personalized.get('action'):
-                        # Buat notifikasi untuk user
                         cursor.execute("""
                         INSERT INTO notifications (
                             user_id, notification_type, title, content, data, created_at
